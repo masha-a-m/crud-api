@@ -1,7 +1,5 @@
-// app.js
-
 const express = require('express');
-const mysql = require('pg');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = 3000;
@@ -9,24 +7,19 @@ const PORT = 3000;
 // Middleware
 app.use(express.json());
 
-// MySQL Connection Pool
-const pool = pg.createPool({
+// PostgreSQL Connection Pool
+const pool = new Pool({
     host: 'localhost',
-    user: 'root',
-    password: 'Integritymasha1@', // ← Replace with your MySQL root password
+    user: 'postgres', // ← change if needed
+    password: 'Integritymasha1@', // ← replace with your PostgreSQL password
     database: 'crud_db',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    port: 5432,
 });
-
-// Promisify for async/await
-const promisePool = pool.promise();
 
 // Helper function to query DB
 async function query(sql, params = []) {
-    const [rows] = await promisePool.query(sql, params);
-    return rows;
+    const result = await pool.query(sql, params);
+    return result.rows;
 }
 
 // === ROUTES ===
@@ -46,11 +39,11 @@ app.get('/users', async (req, res) => {
 app.get('/users/:id', async (req, res) => {
     const id = req.params.id;
     try {
-        const [user] = await query('SELECT * FROM users WHERE id = ?', [id]);
-        if (!user) {
+        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
+        if (user.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json(user);
+        res.json(user[0]);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to fetch user' });
@@ -65,12 +58,11 @@ app.post('/users', async (req, res) => {
     }
 
     try {
-        await query(
-            'INSERT INTO users (name, email, age) VALUES (?, ?, ?)',
+        const result = await query(
+            'INSERT INTO users (name, email, age) VALUES ($1, $2, $3) RETURNING *',
             [name, email, age]
         );
-        const newUser = await query('SELECT * FROM users ORDER BY id DESC LIMIT 1');
-        res.status(201).json(newUser[0]);
+        res.status(201).json(result[0]);
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Failed to create user' });
@@ -83,17 +75,17 @@ app.put('/users/:id', async (req, res) => {
     const { name, email, age } = req.body;
 
     try {
-        const [user] = await query('SELECT * FROM users WHERE id = ?', [id]);
-        if (!user) {
+        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
+        if (user.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
         await query(
-            'UPDATE users SET name = ?, email = ?, age = ? WHERE id = ?',
+            'UPDATE users SET name = $1, email = $2, age = $3 WHERE id = $4 RETURNING *',
             [name, email, age, id]
         );
 
-        const updatedUser = await query('SELECT * FROM users WHERE id = ?', [id]);
+        const updatedUser = await query('SELECT * FROM users WHERE id = $1', [id]);
         res.json(updatedUser[0]);
     } catch (error) {
         console.error(error);
@@ -106,12 +98,12 @@ app.delete('/users/:id', async (req, res) => {
     const id = req.params.id;
 
     try {
-        const [user] = await query('SELECT * FROM users WHERE id = ?', [id]);
-        if (!user) {
+        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
+        if (user.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        await query('DELETE FROM users WHERE id = ?', [id]);
+        await query('DELETE FROM users WHERE id = $1', [id]);
 
         res.json({ message: 'User deleted successfully' });
     } catch (error) {

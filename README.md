@@ -11,9 +11,9 @@
 
 ---
 
-# 📚 MySQL CRUD API - User Management
+# 📚  CRUD API - User Management
 
-A simple Express.js API for managing users using a MySQL database. It supports basic **CRUD operations** (Create, Read, Update, Delete) and is ideal for beginners learning how to build RESTful APIs.
+A simple Express.js API for managing users using a pg database. It supports basic **CRUD operations** (Create, Read, Update, Delete) and is ideal for beginners learning how to build RESTful APIs.
 
 ---
 
@@ -38,8 +38,8 @@ A simple Express.js API for managing users using a MySQL database. It supports b
 
 This project provides a RESTful API for managing user data in a MySQL database. It uses:
 - **Express.js** for the web framework
-- **MySQL** as the database
-- **mysql2** for database connection
+- **Postgre** as the database
+- **pg** for database connection
 - **Node.js** runtime environment
 
 ---
@@ -49,7 +49,6 @@ This project provides a RESTful API for managing user data in a MySQL database. 
 Before running this project, ensure you have the following installed:
 
 - ✅ [Node.js](https://nodejs.org/) (v16+ recommended)
-- ✅ [MySQL](https://dev.mysql.com/downloads/installer/)
 - ✅ A tool like [Postman](https://www.postman.com/) or `curl` for testing API endpoints
 - ✅ Basic knowledge of SQL and terminal commands
 
@@ -72,26 +71,15 @@ npm install
 
 This installs:
 - `express`: Web framework
-- `mysql2`: MySQL client with promise support
 - (Optional) `dotenv`: For loading environment variables
 
 ---
 
 ### 3. Database Setup
 
-You need to create a MySQL database and table before running the app.
-
-#### a. Access MySQL
-
-```bash
-mysql -u root -p
-```
-
 #### b. Create database and table
 
-Run these SQL commands inside MySQL:
 
-```sql
 CREATE DATABASE IF NOT EXISTS crud_api;
 
 USE crud_api;
