@@ -1,115 +1,114 @@
-// index.js
-
 const express = require('express');
+const mysql = require('mysql2/promise');
+
+// Initialize Express
 const app = express();
 const PORT = 3000;
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// Middleware
+app.use(express.json()); // Parse JSON bodies
 
-// In-memory data store
-let items = [
-  { id: 1, name: "Item One", description: "This is item one" },
-  { id: 2, name: "Item Two", description: "This is item two" }
-];
+// Database connection configuration
+const pool = mysql.createPool({
+    host: 'localhost',
+    user: 'root',         // Change this to your MySQL username
+    password: 'Integritymasha1@', // Change this to your MySQL password
+    database: 'crud_api',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
 
-// -----------------------------
+// Test DB connection
+(async () => {
+    try {
+        const [rows] = await pool.query('SELECT 1 + 1 AS solution');
+        console.log('Database connected:', rows[0].solution);
+    } catch (err) {
+        console.error('Database connection test failed:', err.message);
+    }
+})();
+
 // Routes
-// -----------------------------
 
-// Root route
-app.get('/', (req, res) => {
-  res.send("Hello, World!");
+// GET all users
+app.get('/users', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM users');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// GET /items - Retrieve all items
-app.get('/items', (req, res) => {
-  res.status(200).json(items);
+// GET user by ID
+app.get('/users/:id', async (req, res) => {
+    const id = req.params.id;
+    try {
+        const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// GET /items/:id - Retrieve a single item by ID
-app.get('/items/:id', (req, res) => {
-  const itemId = parseInt(req.params.id);
-  const item = items.find(i => i.id === itemId);
+// POST create new user
+app.post('/users', async (req, res) => {
+    const { name, email } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
 
-  if (!item) {
-    return res.status(404).json({ error: 'Item not found' });
-  }
-
-  res.json(item);
+    try {
+        const [result] = await pool.query(
+            'INSERT INTO users (name, email) VALUES (?, ?)',
+            [name, email]
+        );
+        res.status(201).json({ id: result.insertId, name, email });
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// POST /items - Create a new item
-app.post('/items', (req, res) => {
-  const { name, description } = req.body;
+// PUT update user
+app.put('/users/:id', async (req, res) => {
+    const id = req.params.id;
+    const { name, email } = req.body;
+    if (!name && !email) return res.status(400).json({ error: 'Nothing to update' });
 
-  if (!name || !description) {
-    return res.status(400).json({ error: 'Name and description are required' });
-  }
+    try {
+        const [result] = await pool.query(
+            'UPDATE users SET name = IFNULL(?, name), email = IFNULL(?, email) WHERE id = ?',
+            [name, email, id]
+        );
 
-  const newItem = {
-    id: Date.now(), // Use timestamp as unique ID
-    name,
-    description
-  };
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
 
-  items.push(newItem);
-  res.status(201).json(newItem);
+        const [updated] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+        res.json(updated[0]);
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// PUT /items/:id - Update an item by ID
-app.put('/items/:id', (req, res) => {
-  const itemId = parseInt(req.params.id);
-  const { name, description } = req.body;
-
-  if (!name || !description) {
-    return res.status(400).json({ error: 'Name and description are required' });
-  }
-
-  const itemIndex = items.findIndex(i => i.id === itemId);
-
-  if (itemIndex === -1) {
-    return res.status(404).json({ error: 'Item not found' });
-  }
-
-  items[itemIndex] = {
-    ...items[itemIndex],
-    name,
-    description
-  };
-
-  res.json(items[itemIndex]);
+// DELETE user
+app.delete('/users/:id', async (req, res) => {
+    const id = req.params.id;
+    try {
+        const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+        res.json({ message: 'User deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// DELETE /items/:id - Delete an item by ID
-app.delete('/items/:id', (req, res) => {
-  const itemId = parseInt(req.params.id);
-  const itemIndex = items.findIndex(i => i.id === itemId);
-
-  if (itemIndex === -1) {
-    return res.status(404).json({ error: 'Item not found' });
-  }
-
-  items.splice(itemIndex, 1);
-  res.json({ message: 'Item deleted successfully' });
-});
-
-// -----------------------------
-// Error Handling
-// -----------------------------
-
-// Catch-all for undefined routes
-app.use((req, res, next) => {
-  res.status(404).json({ error: 'Route not found' });
-});
-
-// General error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Start the server
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
 });
