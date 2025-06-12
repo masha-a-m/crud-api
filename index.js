@@ -1,37 +1,43 @@
 const express = require('express');
-const { Pool } = require('pg');
+const mysql = require('mysql2/promise');
 
+// Initialize Express
 const app = express();
 const PORT = 3000;
 
 // Middleware
-app.use(express.json());
+app.use(express.json()); // Parse JSON bodies
 
-// PostgreSQL Connection Pool
-const pool = new Pool({
+// Database connection configuration
+const pool = mysql.createPool({
     host: 'localhost',
-    user: 'postgres', // ← change if needed
-    password: 'Integritymasha1@', // ← replace with your PostgreSQL password
-    database: 'crud_db',
-    port: 5432,
+    user: 'root',         // Change this to your MySQL username
+    password: 'Integritymasha1@', // Change this to your MySQL password
+    database: 'crud_api',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-// Helper function to query DB
-async function query(sql, params = []) {
-    const result = await pool.query(sql, params);
-    return result.rows;
-}
+// Test DB connection
+(async () => {
+    try {
+        const [rows] = await pool.query('SELECT 1 + 1 AS solution');
+        console.log('Database connected:', rows[0].solution);
+    } catch (err) {
+        console.error('Database connection test failed:', err.message);
+    }
+})();
 
-// === ROUTES ===
+// Routes
 
 // GET all users
 app.get('/users', async (req, res) => {
     try {
-        const users = await query('SELECT * FROM users');
-        res.json(users);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to fetch users' });
+        const [rows] = await pool.query('SELECT * FROM users');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -39,76 +45,66 @@ app.get('/users', async (req, res) => {
 app.get('/users/:id', async (req, res) => {
     const id = req.params.id;
     try {
-        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
-        if (user.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        res.json(user[0]);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to fetch user' });
+        const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-// POST create user
+// POST create new user
 app.post('/users', async (req, res) => {
-    const { name, email, age } = req.body;
-    if (!name || !email || !age) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
+    const { name, email } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
 
     try {
-        const result = await query(
-            'INSERT INTO users (name, email, age) VALUES ($1, $2, $3) RETURNING *',
-            [name, email, age]
+        const [result] = await pool.query(
+            'INSERT INTO users (name, email) VALUES (?, ?)',
+            [name, email]
         );
-        res.status(201).json(result[0]);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to create user' });
+        res.status(201).json({ id: result.insertId, name, email });
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+        res.status(500).json({ error: err.message });
     }
 });
 
 // PUT update user
 app.put('/users/:id', async (req, res) => {
     const id = req.params.id;
-    const { name, email, age } = req.body;
+    const { name, email } = req.body;
+    if (!name && !email) return res.status(400).json({ error: 'Nothing to update' });
 
     try {
-        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
-        if (user.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        await query(
-            'UPDATE users SET name = $1, email = $2, age = $3 WHERE id = $4 RETURNING *',
-            [name, email, age, id]
+        const [result] = await pool.query(
+            'UPDATE users SET name = IFNULL(?, name), email = IFNULL(?, email) WHERE id = ?',
+            [name, email, id]
         );
 
-        const updatedUser = await query('SELECT * FROM users WHERE id = $1', [id]);
-        res.json(updatedUser[0]);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to update user' });
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
+
+        const [updated] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+        res.json(updated[0]);
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+        res.status(500).json({ error: err.message });
     }
 });
 
 // DELETE user
 app.delete('/users/:id', async (req, res) => {
     const id = req.params.id;
-
     try {
-        const user = await query('SELECT * FROM users WHERE id = $1', [id]);
-        if (user.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        await query('DELETE FROM users WHERE id = $1', [id]);
-
+        const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'User not found' });
         res.json({ message: 'User deleted successfully' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Failed to delete user' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
